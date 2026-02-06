@@ -1,0 +1,18 @@
+
+- name: Create new container
+  community.proxmox.proxmox:
+    vmid: "{{ lxc_vmid | default(400) }}"
+    api_host: "{{ proxmox_api_host | default('10.69.1.10') }}"
+    node: "{{ proxmox_node | default('Winston') }}"
+    api_token_id: "{{ proxmox_api_token_id }}"      # Changed!
+    api_token_secret: "{{ proxmox_api_token_secret }}"  # Changed!
+    api_user: "{{ proxmox_api_user | default('ansible@pam') }}"
+    password: "{{ lxc_root_password }}"
+    hostname: "{{ lxc_hostname | default('lxc')}}"
+    ostemplate: "{{ lxc_template | default('local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst' )}}"
+    cores: "{{ lxc_cores | default(1) }}"
+    memory: "{{ lxc_memory | default(512) }}"
+    swap: "{{ lxc_swap | default(512) }}"
+    netif: "{{ lxc_netif | default({}) }}"
+    storage: "{{ lxc_storage | default('local-lvm') }}"
+    state: present

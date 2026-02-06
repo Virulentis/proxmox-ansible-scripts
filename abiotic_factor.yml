@@ -1,0 +1,10 @@
+
+- name: Create Abiotic Server
+  hosts: Winston
+  
+  roles:
+    - role: proxmox_lxc
+      vars:
+        lxc_vmid: 404
+        lxc_hostname: "verywell"
+        lxc_memory: 4096
