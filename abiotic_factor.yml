@@ -1,10 +1,69 @@
-
-- name: Create Abiotic Server
+- name: Setup Abiotic Factor game server
   hosts: Winston
-  
+  vars:
+        lxc_vmid: 404
+
   roles:
     - role: proxmox_lxc
       vars:
-        lxc_vmid: 404
-        lxc_hostname: "verywell"
-        lxc_memory: 4096
+        lxc_hostname: "Abiotic-Server"
+        lxc_memory: 8192
+        lxc_cores: 4
+        lxc_netif: "{'net0': 'name=eth0,bridge=vmbr0,ip=10.69.1.40/24,gw=10.69.1.1'}"
+        lxc_tags: "gameserver"
+        lxc_disk: 'local-lvm:30'
+        lxc_template: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+        lxc_state: present
+    
+    - role: proxmox_lxc
+      vars:
+        lxc_hostname: "Abiotic-Server"
+        lxc_memory: 8192
+        lxc_cores: 4
+        lxc_netif: "{'net0': 'name=eth0,bridge=vmbr0,ip=10.69.1.40/24,gw=10.69.1.1'}"
+        lxc_tags: "gameserver"
+        lxc_disk: 'local-lvm:30'
+        lxc_template: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+        lxc_state: started
+        
+
+  tasks:
+
+    - name: Check container status
+      shell: "pct status {{lxc_vmid}}"
+      register: container_status
+
+    - name: Debug container status
+      debug:
+        var: container_status.stdout
+
+    - name: test
+      vars:
+        bash: "pct exec {{lxc_vmid}} -- bash -c"
+      shell: |
+        pct exec {{lxc_vmid}} -- bash <<'EOF'
+          set -e
+          useradd -m abiotic
+          apt update -y 
+          apt upgrade -y
+          apt install software-properties-common lsb-release wget -y
+          mkdir -pm777 /etc/apt/keyrings
+          wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key
+          wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/$(lsb_release -is | tr '[:upper:]' '[:lower:]')/dists/$(lsb_release -cs)/winehq-$(lsb_release -cs).sources
+          dpkg --add-architecture i386
+          apt update -y
+          apt install --install-recommends winehq-staging -y
+          apt install cabextract winbind screen xvfb -y
+          add-apt-repository multiverse -y
+          apt update -y
+          apt install steamcmd -y
+          mkdir /home/abiotic/abioticserver
+          /usr/games/steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /home/abiotic/abioticserver +login anonymous +app_update 2857200 +quit
+          touch /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/runserver.sh
+        EOF
+      register: setup_result
+
+    - name: Show output
+      debug:
+        var: setup_result.stdout_lines
+# apt install software-properties-common lsb-release wget

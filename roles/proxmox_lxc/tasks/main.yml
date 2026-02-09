@@ -1,7 +1,9 @@
 
-- name: Create new container
+
+
+- name: LXC Container {{lxc_state}}
   community.proxmox.proxmox:
-    vmid: "{{ lxc_vmid | default(400) }}"
+    vmid: "{{ lxc_vmid }}"
     api_host: "{{ proxmox_api_host | default('10.69.1.10') }}"
     node: "{{ proxmox_node | default('Winston') }}"
     api_token_id: "{{ proxmox_api_token_id }}"      # Changed!
@@ -13,6 +15,10 @@
     cores: "{{ lxc_cores | default(1) }}"
     memory: "{{ lxc_memory | default(512) }}"
     swap: "{{ lxc_swap | default(512) }}"
-    netif: "{{ lxc_netif | default({}) }}"
-    storage: "{{ lxc_storage | default('local-lvm') }}"
-    state: present
+    disk: "{{ lxc_disk | default('local-lvm:10') }}"
+    nameserver: "8.8.8.8"
+    tags: "{{lxc_tags}}"
+    netif: "{{ lxc_netif | default({'net0': 'name=eth0,bridge=vmbr0,ip=10.69.1.255/24,gw=10.69.1.1'}) }}"
+    state: "{{lxc_state | default(present) }}"
+
+
