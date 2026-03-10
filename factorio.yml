@@ -2,6 +2,10 @@
   hosts: Winston
   vars:
         lxc_vmid: 404
+        mod_list:
+          - base
+          - quality
+          - space-age
 
   roles:
     - role: proxmox_lxc
@@ -49,4 +53,38 @@
         tar -xvf /opt/factorio_headless.tar.gz
         rm /opt/factorio_headless.tar.gz
         chown -R factorio:factorio /opt/factorio
-        nano /etc/systemd/system/factorio.service
+        rm /opt/factorio/mods/mod-list.json
+        
+        EOF
+      register: setup_result
+
+    - name: Build mod list
+      set_fact:
+        mod_json:
+          mods: "{{ mod_list | map('community.general.dict_kv', 'name') | map('combine', {'enabled': true}) | list }}"
+
+    - name: Copy mod config into container
+      shell: "pct push {{ lxc_vmid }} {{ mod_json | to_nice_json }} /opt/factorio/mods/mod-list.json --perms 0700 --user 1000"
+
+    - name: Example clone of a single branch
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/crash8229/factorio-mod-downloader/blob/main/factorio_mod_downloader.py"
+        dest: /tmp/script.py
+        mode: '0755'
+
+    - name: Push script into container
+      ansible.builtin.command:
+        cmd: "pct push {{ lxc_vmid }} /tmp/script.py /opt/scripts/script.py --perms 0755"
+
+    - name: Clean up temp file on host
+      ansible.builtin.file:
+        path: /tmp/script.py
+        state: absent
+
+    - name: Install pip in container
+      ansible.builtin.command:
+        cmd: "pct exec {{ lxc_vmid }} -- apt install -y python3-pip"
+
+    - name: Run script in container
+      ansible.builtin.command:
+        cmd: "pct exec {{ lxc_vmid }} -- python3 /opt/scripts/script.py /opt/factorio/mods/mod-list.json"

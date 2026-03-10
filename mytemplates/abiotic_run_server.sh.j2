@@ -1,2 +1,4 @@
 #!/bin/bash
-xvfb-run /opt/wine-staging/bin/wine64 /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log -newconsole -useperfthreads -NoAsyncLoadingThread -MaxServerPlayers={{MaxServerPlayers}} -PORT=7777 -QUERYPORT=27015 -tcp -ServerPassword={{ServerPassword}} -SteamServerName={{ServerName}} -WorldSaveName={{SaveName}}
+export WINEARCH=win64
+export WINEPREFIX=/home/abiotic/.wine
+xvfb-run wine /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log -newconsole -useperfthreads -NoAsyncLoadingThread -MaxServerPlayers={{MaxServerPlayers}} -PORT=7777 -QUERYPORT=27015 -tcp -ServerPassword={{ServerPassword}} -SteamServerName={{ServerName}} -WorldSaveName={{SaveName}}

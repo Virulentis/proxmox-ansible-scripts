@@ -1,0 +1,12 @@
+    [Unit]
+    Description=Factorio Headless Server
+    After=network.target
+
+    [Service]
+    User=factorio
+    WorkingDirectory=/opt/factorio
+    ExecStart=/opt/factorio/bin/x64/factorio --start-server /opt/factorio/saves/{{SaveName}}.zip --server-settings /opt/factorio/data/server-settings.json
+    Restart=on-failure
+
+    [Install]
+    WantedBy=multi-user.target
