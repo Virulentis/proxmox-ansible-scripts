@@ -1,0 +1,52 @@
+- name: Setup Factorio game server
+  hosts: Winston
+  vars:
+        lxc_vmid: 404
+
+  roles:
+    - role: proxmox_lxc
+      vars:
+        lxc_hostname: "Factorio-Server"
+        lxc_memory: 8192
+        lxc_cores: 4
+        lxc_netif: "{'net0': 'name=eth0,bridge=vmbr0,ip=10.69.1.39/24,gw=10.69.1.1'}"
+        lxc_tags: "gameserver"
+        lxc_disk: 'local-lvm:30'
+        lxc_template: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+        lxc_state: present
+    
+    - role: proxmox_lxc
+      vars:
+        lxc_hostname: "Factorio-Server"
+        lxc_memory: 8192
+        lxc_cores: 4
+        lxc_netif: "{'net0': 'name=eth0,bridge=vmbr0,ip=10.69.1.39/24,gw=10.69.1.1'}"
+        lxc_tags: "gameserver"
+        lxc_disk: 'local-lvm:30'
+        lxc_template: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+        lxc_state: started
+        
+
+  tasks:
+
+    - name: Check container status
+      shell: "pct status {{lxc_vmid}}"
+      register: container_status
+
+    - name: Debug container status
+      debug:
+        var: container_status.stdout
+
+    - name: install Factorio on {{lxc_vmid}} and install server files
+      vars:
+        bash: "pct exec {{lxc_vmid}} -- bash -c"
+      shell: |
+        set -e
+        useradd -m factorio --disabled-login --no-create-home --gecos
+        apt update -y 
+        apt upgrade -y
+        wget -O /opt/factorio_headless.tar.gz https://www.factorio.com/get-download/latest/headless/linux64
+        tar -xvf /opt/factorio_headless.tar.gz
+        rm /opt/factorio_headless.tar.gz
+        chown -R factorio:factorio /opt/factorio
+        nano /etc/systemd/system/factorio.service
