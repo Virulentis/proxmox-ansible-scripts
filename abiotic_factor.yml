@@ -2,6 +2,10 @@
   hosts: Winston
   vars:
         lxc_vmid: 404
+        MaxServerPlayers: 6
+        ServerName: "Abiotic"
+        ServerPassword: "HorseEatsBattery"
+        SaveName: "Abiotic"
 
   roles:
     - role: proxmox_lxc
@@ -37,12 +41,11 @@
       debug:
         var: container_status.stdout
 
-    - name: test
+    - name: install abiotic on {{lxc_vmid}} and install server files
       vars:
         bash: "pct exec {{lxc_vmid}} -- bash -c"
       shell: |
         pct exec {{lxc_vmid}} -- bash <<'EOF'
-          set -e
           useradd -m abiotic
           apt update -y 
           apt upgrade -y
@@ -55,15 +58,37 @@
           apt install --install-recommends winehq-staging -y
           apt install cabextract winbind screen xvfb -y
           add-apt-repository multiverse -y
+          apt install libegl1 libegl-mesa0 libgles2 -y
           apt update -y
+
+          # Pre-accept Steam license
+          echo steam steam/question select "I AGREE" | debconf-set-selections
+          echo steam steam/license note '' | debconf-set-selections
+
           apt install steamcmd -y
           mkdir /home/abiotic/abioticserver
-          /usr/games/steamcmd +@sSteamCmdForcePlatformType windows +force_install_dir /home/abiotic/abioticserver +login anonymous +app_update 2857200 +quit
-          touch /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/runserver.sh
+          chown -R abiotic:abiotic /home/abiotic
+
+
+          su - abiotic -c '/usr/games/steamcmd +force_install_dir /home/abiotic/abioticserver +login anonymous +@sSteamCmdForcePlatformType windows +@sSteamCmdForcePlatformBitness 64 +app_update 2857200 validate +quit'
         EOF
       register: setup_result
+
+
+    - name: Render config template locally
+      template:
+        src: "{{ playbook_dir }}/mytemplates/abiotic_run_server.sh.j2"
+        dest: "/tmp/abiotic_runserver.sh"
+      delegate_to: localhost
+
+    - name: Copy rendered script to Proxmox host
+      copy:
+        src: "/tmp/abiotic_runserver.sh"
+        dest: "/tmp/abiotic_runserver.sh"
+
+    - name: Copy config into container
+      shell: "pct push {{ lxc_vmid }} /tmp/abiotic_runserver.sh /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/runserver.sh --perms 0744 --user 1000"
 
     - name: Show output
       debug:
         var: setup_result.stdout_lines
-# apt install software-properties-common lsb-release wget
