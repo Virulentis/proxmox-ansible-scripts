@@ -1,11 +1,19 @@
 - name: Setup Factorio game server
   hosts: Winston
   vars:
-        lxc_vmid: 404
+        lxc_vmid: 390
         mod_list:
           - base
           - quality
           - space-age
+          - mapshot
+        max_players: 5
+        require_user_verification: "true"
+        autosave_interval: 10
+        auto_pause: "true"
+        SaveName: "WAABD"
+        factorio_version: "2.0.73"
+        ServerName: "Taco"
 
   roles:
     - role: proxmox_lxc
@@ -45,16 +53,16 @@
       vars:
         bash: "pct exec {{lxc_vmid}} -- bash -c"
       shell: |
-        set -e
-        useradd -m factorio --disabled-login --no-create-home --gecos
-        apt update -y 
-        apt upgrade -y
-        wget -O /opt/factorio_headless.tar.gz https://www.factorio.com/get-download/latest/headless/linux64
-        tar -xvf /opt/factorio_headless.tar.gz
-        rm /opt/factorio_headless.tar.gz
-        chown -R factorio:factorio /opt/factorio
-        rm /opt/factorio/mods/mod-list.json
-        
+        pct exec {{lxc_vmid}} -- bash <<'EOF'
+          id factorio &>/dev/null || adduser --disabled-login --no-create-home --gecos "" factorio
+          apt update -y 
+          apt upgrade -y
+          wget -O /opt/factorio_headless.tar.gz https://www.factorio.com/get-download/{{factorio_version}}/headless/linux64
+          tar -xvf /opt/factorio_headless.tar.gz -C /opt 2>&1 > /dev/null
+          rm /opt/factorio_headless.tar.gz
+          chown -R factorio:factorio /opt/factorio
+          mkdir -p /opt/factorio/mods
+          
         EOF
       register: setup_result
 
@@ -63,28 +71,90 @@
         mod_json:
           mods: "{{ mod_list | map('community.general.dict_kv', 'name') | map('combine', {'enabled': true}) | list }}"
 
-    - name: Copy mod config into container
-      shell: "pct push {{ lxc_vmid }} {{ mod_json | to_nice_json }} /opt/factorio/mods/mod-list.json --perms 0700 --user 1000"
+    - name: Render config template
+      template:
+        src: "{{ playbook_dir }}/mytemplates/server-settings.json.j2"
+        dest: "/tmp/server-settings.json"
 
-    - name: Example clone of a single branch
+    - name: copy settings to factorio file
+      ansible.builtin.command:
+        cmd: "pct push {{ lxc_vmid }} /tmp/server-settings.json /opt/factorio/data/server-settings.json"
+
+    - name: Write mod list to temp file
+      copy:
+        content: |
+          {{ mod_json | to_nice_json }}
+        dest: /tmp/mod-list.json
+
+    - name: Copy mod config into container
+      command: "pct push {{ lxc_vmid }} /tmp/mod-list.json /opt/factorio/mods/mod-list.json"
+
+    - name: download script
       ansible.builtin.get_url:
-        url: "https://raw.githubusercontent.com/crash8229/factorio-mod-downloader/blob/main/factorio_mod_downloader.py"
+        url: "https://raw.githubusercontent.com/Virulentis/factorio-mod-downloader/main/factorio_mod_downloader.py"
         dest: /tmp/script.py
         mode: '0755'
 
     - name: Push script into container
       ansible.builtin.command:
-        cmd: "pct push {{ lxc_vmid }} /tmp/script.py /opt/scripts/script.py --perms 0755"
+        cmd: "pct push {{ lxc_vmid }} /tmp/script.py /opt/factorio/script.py --perms 0755"
 
     - name: Clean up temp file on host
       ansible.builtin.file:
         path: /tmp/script.py
         state: absent
 
+
+    - name: Write user-data.json into container
+      shell: |
+        cat <<'EOF' | pct exec {{ lxc_vmid }} -- tee /opt/factorio/user-data.json > /dev/null
+        {
+          "user": "{{ factorio_username }}",
+          "token": "{{ factorio_token }}"
+        }
+        EOF
+
     - name: Install pip in container
       ansible.builtin.command:
         cmd: "pct exec {{ lxc_vmid }} -- apt install -y python3-pip"
 
+    - name: Install Python packages in container
+      ansible.builtin.command:
+        cmd: "pct exec {{ lxc_vmid }} -- pip3 install requests alive_progress --break-system-packages"
+
     - name: Run script in container
       ansible.builtin.command:
-        cmd: "pct exec {{ lxc_vmid }} -- python3 /opt/scripts/script.py /opt/factorio/mods/mod-list.json"
+        cmd: "pct exec {{ lxc_vmid }} -- bash -c 'cd /opt/factorio && python3 script.py /opt/factorio/mods/mod-list.json'"
+
+    - name: Render service template
+      template:
+        src: "{{ playbook_dir }}/mytemplates/factorio.service.j2"
+        dest: "/tmp/factorio.service"
+
+    - name: copy systemd file to factorio server
+      ansible.builtin.command:
+        cmd: "pct push {{ lxc_vmid }} /tmp/factorio.service /etc/systemd/system/factorio.service"
+
+    - name: Verify service file exists
+      ansible.builtin.command:
+        cmd: "pct exec {{ lxc_vmid }} -- cat /etc/systemd/system/factorio.service"
+      register: verify_service
+
+    - name: Create save if it doesn't exist
+      ansible.builtin.command:
+        cmd: >
+          pct exec {{ lxc_vmid }} -- bash -c
+          'test -f /opt/factorio/saves/{{ SaveName }}.zip ||
+          /opt/factorio/bin/x64/factorio --create /opt/factorio/saves/{{ SaveName }}.zip'
+
+    - name: Fix ownership
+      command: "pct exec {{ lxc_vmid }} -- chown -R factorio:factorio /opt/factorio"
+
+    - name: Enable Systemd
+      ansible.builtin.command:
+        cmd: "pct exec {{ lxc_vmid }} -- bash -c 'systemctl daemon-reload && systemctl enable --now factorio.service'"
+
+    - name: Clean up temp file on host
+      ansible.builtin.file:
+        path: /tmp/factorio.service
+        state: absent
