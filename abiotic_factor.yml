@@ -4,7 +4,6 @@
         lxc_vmid: 404
         MaxServerPlayers: 6
         ServerName: "Abiotic"
-        ServerPassword: "HorseEatsBattery"
         SaveName: "Abiotic"
 
   roles:
