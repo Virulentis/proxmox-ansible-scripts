@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+
+ABIOTIC_USER="{{ abiotic_user }}"
+ABIOTIC_HOME="{{ abiotic_home }}"
+ABIOTIC_INSTALL_DIR="{{ abiotic_install_dir }}"
+ABIOTIC_WINE_PREFIX="{{ abiotic_wine_prefix }}"
+ABIOTIC_APP_ID="{{ abiotic_app_id }}"
+
+export DEBIAN_FRONTEND=noninteractive
+
+if ! id "${ABIOTIC_USER}" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "${ABIOTIC_USER}"
+fi
+
+if ! dpkg --print-foreign-architectures | grep -qx i386; then
+  dpkg --add-architecture i386
+fi
+
+apt-get update
+apt-get upgrade -y
+apt-get install -y \
+  cabextract \
+  ca-certificates \
+  gnupg \
+  libegl1 \
+  libegl-mesa0 \
+  libgles2 \
+  lsb-release \
+  screen \
+  software-properties-common \
+  wget \
+  winbind \
+  xvfb
+
+mkdir -p /etc/apt/keyrings
+wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key
+wget -O "/etc/apt/sources.list.d/winehq-$(lsb_release -cs).sources" "https://dl.winehq.org/wine-builds/$(lsb_release -is | tr '[:upper:]' '[:lower:]')/dists/$(lsb_release -cs)/winehq-$(lsb_release -cs).sources"
+
+add-apt-repository -y multiverse
+
+echo steam steam/question select "I AGREE" | debconf-set-selections
+echo steam steam/license note '' | debconf-set-selections
+
+apt-get update
+apt-get install --install-recommends -y winehq-staging
+apt-get install -y steamcmd
+
+ln -sf /opt/wine-staging/bin/wine64 /usr/local/bin/wine64
+ln -sf /opt/wine-staging/bin/wine /usr/local/bin/wine
+
+mkdir -p "${ABIOTIC_INSTALL_DIR}"
+chown -R "${ABIOTIC_USER}:${ABIOTIC_USER}" "${ABIOTIC_HOME}"
+
+su - "${ABIOTIC_USER}" -c "WINEARCH=win64 WINEPREFIX=${ABIOTIC_WINE_PREFIX} xvfb-run wineboot --init"
+su - "${ABIOTIC_USER}" -c "/usr/games/steamcmd +force_install_dir ${ABIOTIC_INSTALL_DIR} +login anonymous +@sSteamCmdForcePlatformType windows +@sSteamCmdForcePlatformBitness 64 +app_update ${ABIOTIC_APP_ID} validate +quit"
+
+cat > "${ABIOTIC_INSTALL_DIR}/AbioticFactor/Binaries/Win64/runserver.sh" <<'RUNSERVER'
+{% include 'abiotic_run_server.sh.j2' %}
+RUNSERVER
+
+chmod 0755 "${ABIOTIC_INSTALL_DIR}/AbioticFactor/Binaries/Win64/runserver.sh"
+chown "${ABIOTIC_USER}:${ABIOTIC_USER}" "${ABIOTIC_INSTALL_DIR}/AbioticFactor/Binaries/Win64/runserver.sh"
+
+cat > /etc/systemd/system/abiotic-factor.service <<SERVICE
+[Unit]
+Description=Abiotic Factor Dedicated Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${ABIOTIC_USER}
+Group=${ABIOTIC_USER}
+WorkingDirectory=${ABIOTIC_INSTALL_DIR}/AbioticFactor/Binaries/Win64
+ExecStart=${ABIOTIC_INSTALL_DIR}/AbioticFactor/Binaries/Win64/runserver.sh
+Restart=on-failure
+RestartSec=15
+LimitNOFILE=100000
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable --now abiotic-factor.service

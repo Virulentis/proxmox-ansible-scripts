@@ -1,4 +1,4 @@
 #!/bin/bash
 export WINEARCH=win64
-export WINEPREFIX=/home/abiotic/.wine
-xvfb-run wine /home/abiotic/abioticserver/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log -newconsole -useperfthreads -NoAsyncLoadingThread -MaxServerPlayers={{MaxServerPlayers}} -PORT=7777 -QUERYPORT=27015 -tcp -ServerPassword={{ServerPassword}} -SteamServerName={{ServerName}} -WorldSaveName={{SaveName}}
+export WINEPREFIX={{ abiotic_wine_prefix | default('/home/abiotic/.wine') }}
+xvfb-run wine {{ abiotic_install_dir | default('/home/abiotic/abioticserver') }}/AbioticFactor/Binaries/Win64/AbioticFactorServer-Win64-Shipping.exe -log -newconsole -useperfthreads -NoAsyncLoadingThread -MaxServerPlayers={{ MaxServerPlayers }} -PORT={{ AbioticServerPort | default(7777) }} -QUERYPORT={{ AbioticQueryPort | default(27015) }} -tcp -ServerPassword="{{ ServerPassword | default('') }}" -SteamServerName="{{ ServerName }}" -WorldSaveName="{{ SaveName }}"
